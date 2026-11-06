@@ -87,8 +87,9 @@ final class Offerings {
             if (mode.equals("players") && !isPlayer) return err("This offering only works on players.");
             if (mode.equals("mobs") && isPlayer) return err("This offering only works on mobs.");
             if (!(target instanceof LivingEntity)) return err("Target has to be alive.");
-            if (target.level() != jerry.level()) return err("Jerry can't reach other dimensions.");
-            if (g.targetRange >= 0 && target.distanceTo(jerry) > g.targetRange)
+            if (target == player) return err("Pick someone other than yourself.");
+            if (!off.anyDimension && target.level() != jerry.level()) return err("Jerry can't reach other dimensions.");
+            if (!off.anyDimension && g.targetRange >= 0 && target.distanceTo(jerry) > g.targetRange)
                 return err("Target is too far from Jerry (max " + (int) g.targetRange + " blocks).");
             if (off.harmful && target instanceof ServerPlayer tp) {
                 if (g.protectOps && server.getPlayerList().isOp(tp.getGameProfile()))
@@ -144,7 +145,7 @@ final class Offerings {
         if (off.harmful && target instanceof ServerPlayer tp && tp != player) {
             targetGrace.put(tp.getUUID(), now + g.targetGraceSeconds * 1000L);
         }
-        if (target != null && target != player) jerry.sayLine("accept_target", pName, tName);
+        if (off.harmful && target != null && target != player) jerry.sayLine("accept_target", pName, tName);
         else jerry.sayLine("accept", pName, tName);
         JerryChat.noteEvent(jerry, pName + " paid you for '" + off.name + "'" + (tName != null ? " on " + tName : "") + " and you did it.");
         return Component.literal("Jerry accepted: " + off.name).withStyle(ChatFormatting.GOLD);
@@ -269,6 +270,24 @@ final class Offerings {
                 for (JsonElement el : a.getAsJsonArray("items")) {
                     Util.give(p, Util.stack(ctx.server(), JerryConfig.specFromJson(el.getAsJsonObject())));
                 }
+            }
+            case "teleport" -> {
+                Entity who = "target".equalsIgnoreCase(str(a, "who", "self")) ? focus : ctx.player();
+                Entity to = "self".equalsIgnoreCase(str(a, "to", "target")) ? ctx.player() : focus;
+                if (who == to || !(to.level() instanceof ServerLevel destLevel)) return;
+                ServerLevel fromLevel = (ServerLevel) who.level();
+                fromLevel.sendParticles(ParticleTypes.PORTAL, who.getX(), who.getY() + 1, who.getZ(), 60, 0.4, 1, 0.4, 0.5);
+                fromLevel.playSound(null, who.blockPosition(), SoundEvents.ENDERMAN_TELEPORT, SoundSource.PLAYERS, 1F, 1F);
+                if (who instanceof ServerPlayer sp) {
+                    sp.teleportTo(destLevel, to.getX(), to.getY(), to.getZ(), to.getYRot(), sp.getXRot());
+                } else if (who.level() == destLevel) {
+                    who.teleportTo(to.getX(), to.getY(), to.getZ());
+                } else {
+                    return;
+                }
+                who.fallDistance = 0;
+                destLevel.sendParticles(ParticleTypes.REVERSE_PORTAL, to.getX(), to.getY() + 1, to.getZ(), 60, 0.4, 1, 0.4, 0.3);
+                destLevel.playSound(null, to.blockPosition(), SoundEvents.ENDERMAN_TELEPORT, SoundSource.PLAYERS, 1F, 1.2F);
             }
             case "teleport_jerry" -> {
                 if (focus.level() != jerry.level()) return;

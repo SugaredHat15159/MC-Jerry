@@ -50,6 +50,7 @@ public final class JerryConfig {
         if (general.lines == null) general.lines = General.defaultLines();
         if (shop.trades == null) shop.trades = new ArrayList<>();
         if (offerings.offerings == null) offerings.offerings = new ArrayList<>();
+        mergeNewDefaultOfferings(problems);
         JerryMod.LOG.info("Jerry config loaded: {} trades, {} offerings", shop.trades.size(), offerings.offerings.size());
         for (String p : problems) JerryMod.LOG.error("Jerry config: {}", p);
         return problems;
@@ -67,6 +68,30 @@ public final class JerryConfig {
         } catch (Exception e) {
             problems.add(name + " is broken (" + e.getMessage() + ") — using defaults until fixed");
             return fallback;
+        }
+    }
+
+    /** Adds default offerings introduced by mod updates (once), then saves the file. */
+    private static void mergeNewDefaultOfferings(List<String> problems) {
+        OfferingsFile def = OfferingsFile.defaults();
+        if (offerings.defaultsSeen == null) offerings.defaultsSeen = new ArrayList<>();
+        boolean changed = false;
+        for (Offering d : def.offerings) {
+            if (offerings.defaultsSeen.contains(d.id)) continue;
+            offerings.defaultsSeen.add(d.id);
+            changed = true;
+            boolean exists = offerings.offerings.stream().anyMatch(o -> o != null && d.id.equalsIgnoreCase(o.id));
+            if (!exists) {
+                offerings.offerings.add(d);
+                JerryMod.LOG.info("Jerry: added new default offering '{}'", d.id);
+            }
+        }
+        if (changed) {
+            try {
+                Files.writeString(dir().resolve("offerings.json"), GSON.toJson(offerings), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                problems.add("Couldn't save offerings.json: " + e.getMessage());
+            }
         }
     }
 
@@ -233,12 +258,16 @@ public final class JerryConfig {
         public String target = "none";
         /** Harmful offerings respect friend protection, target grace and protectOps. */
         public boolean harmful = false;
+        /** Allow targets in other dimensions / any distance (e.g. teleports). */
+        public boolean anyDimension = false;
         public List<JsonObject> actions = new ArrayList<>();
     }
 
     public static class OfferingsFile {
         public String _readme = "Paid favors: /jerry offer <id> [target]. Action types are listed in README.txt.";
         public List<Offering> offerings;
+        /** Default offering ids already offered to this file. New defaults from mod updates get added once; deleting one keeps it deleted. */
+        public List<String> defaultsSeen;
 
         static OfferingsFile defaults() {
             OfferingsFile f = new OfferingsFile();
@@ -280,6 +309,12 @@ public final class JerryConfig {
                     List.of(new ItemSpec("minecraft:netherite_ingot", 2), new ItemSpec("minecraft:diamond", 16)), 40, 5, 1800, "any", true,
                     act("teleport_jerry"), act("lightning", "count", 1, "damage", 0), act("kill")));
 
+            Offering taxi = off("jerry_taxi", "Jerry Taxi", "Jerry teleports you to another player. Works across dimensions.",
+                    List.of(new ItemSpec("minecraft:ender_pearl", 2), new ItemSpec("minecraft:emerald", 4)), -20, 0, 60, "players", false,
+                    act("teleport", "who", "self", "to", "target"));
+            taxi.anyDimension = true;
+            f.offerings.add(taxi);
+
             JsonObject jackpot = act("random", "options", new JsonArray());
             JsonArray opts = jackpot.getAsJsonArray("options");
             opts.add(weighted(50, act("give", "to", "self", "items", items(new ItemSpec("minecraft:diamond", 12)))));
@@ -288,6 +323,8 @@ public final class JerryConfig {
             opts.add(weighted(10, act("give", "to", "self", "items", items(new ItemSpec("minecraft:enchanted_golden_apple", 2)))));
             f.offerings.add(off("gamble", "Jerry's Gamble", "Pay 24 emeralds. Maybe get rich. Maybe explode.",
                     List.of(new ItemSpec("minecraft:emerald", 24)), -100, 0, 120, "none", false, jackpot));
+            f.defaultsSeen = new ArrayList<>();
+            for (Offering o : f.offerings) f.defaultsSeen.add(o.id);
             return f;
         }
 
@@ -354,6 +391,7 @@ public final class JerryConfig {
                                  Any mod item works (e.g. "create:brass_ingot"). Missing mods = trade silently skipped.
                 offerings.json — paid favors. Players run: /jerry offer <id> [target]
                                  target: none | players | mobs | any     harmful: true = respects friend protection & grace time
+                                 anyDimension: true = target may be in another dimension / any distance (used by jerry_taxi)
 
                 FAVOR runs favorMin..favorMax (default -100..100). Goes up with gifts (sneak + right-click Jerry),
                 trades, offerings and nice words in chat. Goes down when you hit him or say rude words.
@@ -371,6 +409,7 @@ public final class JerryConfig {
                   {"type":"time","value":1000}                           1000 = morning, 13000 = night
                   {"type":"give","to":"self|target","items":[{"item":"create:brass_ingot","count":32}]}
                   {"type":"teleport_jerry"}                              Jerry appears next to the target
+                  {"type":"teleport","who":"self","to":"target"}         move the offerer to the target (or "who":"target","to":"self")
                   {"type":"message","text":"{player} paid me. Fear me.","broadcast":true}
                   {"type":"command","command":"effect give {target} minecraft:glowing 30"}   runs as the server (op level 4)
                   {"type":"random","options":[{"weight":3,"actions":[...]},{"weight":1,"actions":[...]}]}
