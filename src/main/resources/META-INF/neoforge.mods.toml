@@ -1,0 +1,24 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="All Rights Reserved"
+
+[[mods]]
+modId="jerry"
+version="1.0.0"
+displayName="Jerry"
+authors="Alex"
+description='''Summon Jerry: an absurdly powerful guy with a shop, a price for everything, and a long memory for who was nice to him.'''
+
+[[dependencies.jerry]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.jerry]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1,1.21.2)"
+ordering="NONE"
+side="BOTH"
